@@ -16,7 +16,7 @@ meta:
 app:
   envs: []
 trigger_map:
-- push_branch: foo
+- push_branch: fooFighters
   workflow: primary
 - pull_request_source_branch: '*'
   workflow: primary
