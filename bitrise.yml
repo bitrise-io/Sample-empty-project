@@ -311,7 +311,7 @@ workflows:
           title: Deploy
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
         stack: linux-docker-android-22.04
 
   ci-be-lint:
@@ -391,7 +391,7 @@ workflows:
       - deploy-to-bitrise-io@2.7.7: { }
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
         stack: linux-docker-android-22.04
 
   ci-frontend-page:
@@ -424,7 +424,7 @@ workflows:
       - deploy-to-bitrise-io@2.7.7: { }
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
         stack: linux-docker-android-22.04
 
   ci-rspec-apps:
@@ -449,7 +449,7 @@ workflows:
       - deploy-to-bitrise-io@2.7.7: { }
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
         stack: linux-docker-android-22.04
 
   ci-rspec:
@@ -484,7 +484,7 @@ workflows:
       - deploy-to-bitrise-io@2.7.7: { }
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
         stack: linux-docker-android-22.04
 
   deploy-build-docker-img-used-for-cache:
@@ -552,7 +552,7 @@ workflows:
                   -f deployments/local/Dockerfile --push .
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
         stack: linux-docker-android-22.04
 
   build-and-push-review-app-image:
@@ -580,7 +580,7 @@ workflows:
   build-and-upload-frontend-staging:
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
     envs:
       - GAR_PROJECT: $GAR_PROJECT_STAGING
       - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
@@ -596,7 +596,7 @@ workflows:
   build-and-upload-frontend-production:
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
     envs:
       - GAR_PROJECT: $GAR_PROJECT_PROD
       - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_PROD
@@ -612,7 +612,7 @@ workflows:
   build-and-upload-backend-staging:
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
     envs:
       - GAR_PROJECT: $GAR_PROJECT_STAGING
       - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
@@ -627,7 +627,7 @@ workflows:
   build-and-upload-backend-production:
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
     envs:
       - GAR_PROJECT: $GAR_PROJECT_PROD
       - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_PROD
@@ -642,7 +642,7 @@ workflows:
   deploy-staging-in-one-workflow:
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
     envs:
       - GAR_PROJECT: $GAR_PROJECT_STAGING
       - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
@@ -667,7 +667,7 @@ workflows:
   deploy-canary:
     meta:
       bitrise.io:
-        machine_type_id: elite-xl
+        machine_type_id: standard
     envs:
       - GAR_PROJECT: $GAR_PROJECT_PROD
       - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_PROD
