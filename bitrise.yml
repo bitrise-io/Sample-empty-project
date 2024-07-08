@@ -16,7 +16,7 @@ meta:
 app:
   envs: []
 trigger_map:
-- push_branch: alma
+- push_branch: 1234
   workflow: primary
 - pull_request_source_branch: '*'
   workflow: primary
