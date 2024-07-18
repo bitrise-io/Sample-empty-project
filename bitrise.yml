@@ -1,15 +1,1046 @@
 format_version: "3"
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
-project_type: other
-workflows:
-  primary:
-    steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone@8: {}
-    - deploy-to-bitrise-io@2: {}
+project_type: ""
+app:
+  envs:
+    - SERVICE_NAME: bitrise-website
+    - COVERAGE: yesplease
+      opts:
+        is_expand: false
+    - CLICKUP_TASK_BASE_URL: https://app.clickup.com/757956/762238/t
+      opts:
+        is_expand: false
+    - STORYBOOK_GCP_DEPLOY_BUCKET: bitrise-storybook-dev
+      opts:
+        is_expand: false
+    - GAR_PROJECT_STAGING: ip-kubernetes-dev
+      opts:
+        is_expand: false
+    - GAR_PROJECT_PROD: ip-kubernetes-prod
+      opts:
+        is_expand: false
+    - CANARY_BRANCH:
+      opts:
+        is_expand: false
+    # Github username to use to commit into the gitops repository.
+    - GITOPS_GITHUB_USERNAME: $GITOPS_GITHUB_USERNAME
+    # Personal access token for Github to commit into the gitops repository.
+    - GITOPS_DEPLOY_TOKEN: $GITOPS_DEPLOY_TOKEN
+    # Base64 encoded credentials for pushing images to the staging artifact registry.
+    - GAR_SERVICE_ACCOUNT_STAGING_B64: $GCR_SERVICE_ACCOUNT_STAGING_B64
+    # Staging environment variables used by the Frontend. Used to build docker image. Should be in a .env file format.
+    - FRONTEND_ENV_CONTENT_STAGING: $FRONTEND_ENV_CONTENT_STAGING
+    # Base64 encoded credentials for pushing images to the production artifact registry.
+    - GAR_SERVICE_ACCOUNT_PROD_B64: $GCR_SERVICE_ACCOUNT_PROD_B64
+    # Production environment variables used by the Frontend. Used to build docker image. Should be in a .env file format.
+    - FRONTEND_ENV_CONTENT_PROD: $FRONTEND_ENV_CONTENT_PROD
+    - GAR_HOST: us-central1-docker.pkg.dev
+    - GAR_REPOSITORY: web-monolith
+    - DOCKER_CACHE_FLAVOUR: master
+
 meta:
   bitrise.io:
-    stack: linux-docker-android-20.04
     machine_type_id: standard
-trigger_map: []
+    stack: linux-docker-android-20.04
+
+trigger_map:
+  - push_branch: master
+    pipeline: deploy-pipeline
+  - push_branch: 'gh-readonly-queue/*'
+    pipeline: ci-pipeline
+  - pull_request_target_branch: '*'
+    pipeline: ci-pipeline
+#- push_branch: backend-124-rails-7.0-upgrade
+#  pipeline: test-and-deploy-canary-pipeline
+
+pipelines:
+  ci-pipeline:
+    stages:
+      - check-change-type: { }
+      - ci-stage: { }
+  test-and-deploy-canary-pipeline:
+    stages:
+      - check-change-type: { }
+      - ci-canary-stage: { }
+      - deploy-canary-stage: { }
+  deploy-pipeline:
+    stages:
+      - prepare-for-deploy-stage: { }
+      - deploy-stage: { }
+      - after-deploy-stage: { }
+      - alert-deploy-failure: { }
+
+stages:
+  check-change-type:
+    workflows:
+      - check-change-type: { }
+  ci-stage:
+    workflows:
+      - ci-rspec-apps:
+          run_if: '{{ getenv "RUN_BACKEND_CI" | ne "false" }}'
+      - ci-rspec:
+          run_if: '{{ getenv "RUN_CORE_BACKEND_CI" | ne "false" }}'
+      - ci-be-lint:
+          run_if: '{{ getenv "RUN_BACKEND_CI" | ne "false" }}'
+      - ci-frontend:
+          run_if: '{{ getenv "RUN_FRONTEND_FULL_CI" | ne "false" }}'
+      - ci-frontend-page:
+          run_if: '{{ getenv "RUN_FRONTEND_PAGE_CI" | ne "false" }}'
+      - ci-build-assets-webpacker:
+          run_if: '{{ getenv "RUN_FRONTEND_CI" | ne "false" }}'
+      - ci-build-assets-sprockets: { }
+      - deploy-storybook:
+          run_if: '{{ getenv "RUN_FRONTEND_CI" | ne "false" }}'
+      - code-ql-ruby:
+          run_if: '{{ getenv "RUN_BACKEND_CI" | ne "false" }}'
+
+  ci-canary-stage:
+    workflows:
+      - ci-rspec-apps:
+          run_if: '{{ getenv "RUN_BACKEND_CI" | ne "false" }}'
+      - ci-rspec:
+          run_if: '{{ getenv "RUN_CORE_BACKEND_CI" | ne "false" }}'
+      - ci-be-lint:
+          run_if: '{{ getenv "RUN_BACKEND_CI" | ne "false" }}'
+      - ci-frontend:
+          run_if: '{{ getenv "RUN_FRONTEND_FULL_CI" | ne "false" }}'
+      - ci-frontend-page:
+          run_if: '{{ getenv "RUN_FRONTEND_PAGE_CI" | ne "false" }}'
+      - ci-build-assets-webpacker:
+          run_if: '{{ getenv "RUN_FRONTEND_CI" | ne "false" }}'
+      - ci-build-assets-sprockets: { }
+      - code-ql-ruby:
+          run_if: '{{ getenv "RUN_BACKEND_CI" | ne "false" }}'
+
+  deploy-canary-stage:
+    workflows:
+      - deploy-canary: { }
+
+  prepare-for-deploy-stage:
+    workflows:
+      - merge_to_canary:
+          run_if: '{{getenv "CANARY_BRANCH" | ne ""}}'
+      - build-and-upload-frontend-staging: { }
+      - build-and-upload-frontend-production: { }
+      - build-and-upload-backend-staging: { }
+      - build-and-upload-backend-production: { }
+
+  deploy-stage:
+    workflows:
+      - deploy-staging-via-gitops: { }
+      - deploy-production-via-gitops: { }
+
+  after-deploy-stage:
+    workflows:
+      - deploy-build-docker-img-used-for-cache: { } # Create and push up-to-date Docker image to be used as cache in CI workflows
+      - deploy-storybook: { }
+      - code-ql-ruby: { }
+      - start-security-scan-standalone-build: { }
+
+  alert-deploy-failure:
+    should_always_run: true
+    workflows:
+      - alert-deploy-failed:
+          run_if: '{{ getenv "BITRISEIO_PIPELINE_BUILD_STATUS" | eq "failed" }}'
+
+workflows:
+  _build_docker_img_with_cache:
+    steps:
+      - script@1.2.1:
+          title: pull and build
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -ex
+                docker login -u "$DOCKER_LOGIN_USER" -p "$DOCKER_LOGIN_TOKEN"
+                docker buildx create --use --driver=docker-container
+                docker buildx build -t bitrisedev/webworker --load \
+                  --build-arg BUNDLE_GEMS__CONTRIBSYS__COM=$SIDEKIQ_PRO_LICENCE_KEY \
+                  --cache-from type=registry,ref=bitrisedev/webworker:latest-cache .
+
+
+  _setup:
+    steps:
+      - git-clone@8.2.1:
+          title: Git clone
+
+  _install_node:
+    steps:
+      - script@1.2.1:
+          inputs:
+            - content: |
+                #!/bin/bash
+                mkdir -p /nodejs/{nb,install,nb-cache}
+                REQUESTED_NODE_VERSION=$(awk '{ if ($1 == "nodejs" ) print $2 }' .tool-versions)
+                envman add --key REQUESTED_NODE_VERSION --value $REQUESTED_NODE_VERSION
+      - restore-cache@2.4.0:
+          inputs:
+            - key: |-
+                {{ .OS }}-{{ .Arch }}-nodejs-cache-{{ getenv "REQUESTED_NODE_VERSION" }}
+            - paths: /nodejs/nb-cache
+      - script@1.2.1:
+          title: Install Node.js
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                git clone https://github.com/nodenv/node-build /tmp/node-build
+                cd /tmp/node-build
+                git checkout dd3398ae321b867c44780a8112de30e3e6c4f66b
+                PREFIX=/nodejs/nb /tmp/node-build/install.sh
+                NODE_BUILD_CACHE_PATH=/nodejs/nb-cache /nodejs/nb/bin/node-build $REQUESTED_NODE_VERSION /nodejs/install
+                export PATH=/nodejs/install/bin:$PATH
+                envman add --key PATH --value $PATH
+      - script@1.2.1:
+          title: Install Yarn
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+
+                npm install -g yarn
+      - save-cache@1.2.0:
+          inputs:
+            - key: |-
+                {{ .OS }}-{{ .Arch }}-nodejs-cache-{{ getenv "REQUESTED_NODE_VERSION" }}
+            - paths: /nodejs/nb-cache
+
+  _restore_node_modules:
+    steps:
+      - restore-cache@2.4.0:
+          title: Restore cache
+          inputs:
+            - key: |
+                npm-cache-v4-{{ checksum "yarn.lock" }}
+                npm-cache-v4-
+            - verbose: 'true'
+
+  _cache_node_modules:
+    steps:
+      - save-cache@1.2.0:
+          title: Save cache
+          inputs:
+            - verbose: 'true'
+            - key: npm-cache-v4-{{ checksum "yarn.lock" }}
+            - paths: node_modules
+            - is_key_unique: 'true'
+
+  check-change-type:
+    before_run:
+      - _setup
+    steps:
+      - script@1.2.1:
+          title: Check change type
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -ex
+
+                bash  ./scripts/selective_builds.sh
+      - share-pipeline-variable@1.1.0:
+          inputs:
+            - variables: |-
+                RUN_BACKEND_CI
+                RUN_FRONTEND_CI
+                RUN_CORE_BACKEND_CI
+                RUN_FRONTEND_FULL_CI
+                RUN_ENGINE_BACKEND_CI
+                RUN_FRONTEND_PAGE_CI
+                FRONTEND_PAGE_NAME
+
+  deploy-storybook:
+    before_run:
+      - _setup
+      - _restore_node_modules
+      - _install_node
+    after_run:
+      - _cache_node_modules
+    steps:
+      - yarn@0.1.2:
+          title: Install dependencies
+      - script@1.2.1:
+          title: Build storybook
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                yarn build-storybook
+      - script@1.2.1:
+          title: Deploy storybook
+          is_skippable: true
+          inputs:
+            - content: |
+                node ./.storybook/deploy-storybook.js
+
+  ci-build-assets-sprockets:
+    before_run:
+      - _setup
+      - _build_docker_img_with_cache
+    steps:
+      - script@1.2.1:
+          title: sprockets assets precompile
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -ex
+
+                docker compose --file=docker-compose.test.yml run --rm web bash -xec "bundle exec rake assets:precompile"
+                docker compose --file=docker-compose.test.yml rm -f
+      - deploy-to-bitrise-io@2.7.7: { }
+
+  ci-build-assets-webpacker:
+    before_run:
+      - _setup
+      - _restore_node_modules
+      - _install_node
+    after_run:
+      - _cache_node_modules
+    steps:
+      - yarn@0.1.2:
+          title: Install dependencies
+      - script@1.2.1:
+          title: Build
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails and debug
+                set -ex
+
+                # write your script here
+                yarn webpack --mode production
+      - deploy-to-bitrise-io@2.7.7:
+          title: Deploy
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+        stack: linux-docker-android-20.04
+
+  ci-be-lint:
+    before_run:
+      - _setup
+      - _build_docker_img_with_cache
+    steps:
+      - script@1.2.1:
+          title: rubocop-brakeman
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails
+                set -ex
+                docker compose --file=docker-compose.test.yml run --rm web bundle exec rubocop
+                docker compose --file=docker-compose.test.yml run --rm web bundle exec rails zeitwerk:check
+                #
+                brakeman_output_pth='./tmp/brakeman.html'
+                docker compose --file=docker-compose.test.yml run --rm web bundle exec brakeman --rails7 --run-all-checks --exit-on-warn --format html --output "${brakeman_output_pth}"
+      - script@1.2.1:
+          title: packwerk
+          is_skippable: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails
+                set -ex
+                docker compose --file=docker-compose.test.yml run --rm web bash -c "bin/packwerk validate && bin/packwerk check"
+      - script@1.2.1:
+          title: danger
+          is_skippable: true
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+                gem install bundler
+                gem install danger
+                danger
+
+                # write your script here
+                # docker compose --file=docker-compose.test.yml --env-file=/tmp/.env.common.test --rm web bundle exec danger
+      - deploy-to-bitrise-io@2.7.7: { }
+      - deploy-to-bitrise-io@2.7.7:
+          title: Deploy brakeman.html
+          is_skippable: true
+          inputs:
+            - deploy_path: $BITRISE_SOURCE_DIR/tmp/brakeman.html
+            - notify_email_list: ""
+
+  ci-frontend:
+    before_run:
+      - _setup
+      - _restore_node_modules
+      - _install_node
+    after_run:
+      - _cache_node_modules
+    steps:
+      - yarn@0.1.2:
+          title: Install dependencies
+      - script@1.2.1:
+          title: ESLint & Tests
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails and debug
+                set -ex
+
+                git fetch --depth=1 --no-tags origin master
+                yarn run eslint $(git diff --diff-filter=ACMR --name-only origin/master | grep -E '\.(ts|tsx)$' | xargs)
+                yarn test --ci
+      - custom-test-results-export@1.0.0:
+          title: Export Jest Test Results
+          inputs:
+            - test_name: jest
+            - search_pattern: '*'
+            - base_path: ./junit.xml
+      - deploy-to-bitrise-io@2.7.7: { }
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+        stack: linux-docker-android-20.04
+
+  ci-frontend-page:
+    before_run:
+      - _setup
+      - _restore_node_modules
+      - _install_node
+    after_run:
+      - _cache_node_modules
+    steps:
+      - yarn@0.1.2:
+          title: Install dependencies
+      - script@1.2.1:
+          title: ESLint & Tests
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails and debug
+                set -ex
+
+                git fetch --depth=1 --no-tags origin master
+                yarn run eslint $(git diff --diff-filter=ACMR --name-only origin/master | grep -E '\.(ts|tsx)$' | xargs)
+                ./node_modules/.bin/jest "app/javascript/pages/$FRONTEND_PAGE_NAME" --ci --passWithNoTests
+      - custom-test-results-export@1.0.0:
+          title: Export Jest Test Results
+          inputs:
+            - test_name: jest
+            - search_pattern: '*'
+            - base_path: ./junit.xml
+      - deploy-to-bitrise-io@2.7.7: { }
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+        stack: linux-docker-android-20.04
+
+  ci-rspec-apps:
+    before_run:
+      - _setup
+      - _build_docker_img_with_cache
+    steps:
+      - script@1.2.1:
+          title: rspec-apps
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails
+                set -x
+
+                docker compose --file=docker-compose.test.yml run --rm web bash -c "bundle exec rails db:create && bundle exec rails db:schema:load && bundle exec rspec apps"
+                EXIT_CODE=$?
+
+                docker compose --file=docker-compose.test.yml rm -f
+
+                exit "$EXIT_CODE"
+      - deploy-to-bitrise-io@2.7.7: { }
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+        stack: linux-docker-android-20.04
+
+  ci-rspec:
+    before_run:
+      - _setup
+      - _build_docker_img_with_cache
+    steps:
+      - script@1.2.1:
+          title: rspec
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails
+                set -x
+
+                docker compose --file=docker-compose.test.yml run --rm web bash -x -c "bundle exec rake parallel:create && bundle exec rake parallel:load_schema && bundle exec parallel_test spec components/**/spec -t rspec"
+                EXIT_CODE=$?
+
+                # Merge per-process JUnit reports into one file for Test Reports Add-on
+                docker compose --file=docker-compose.test.yml run --rm web bash -c "bundle exec rake spec:merge_junit"
+
+                docker compose --file=docker-compose.test.yml rm -f
+
+                exit "$EXIT_CODE"
+
+      - custom-test-results-export@1.0.0:
+          title: Export RSpec Test Results
+          inputs:
+            - search_pattern: '*'
+            - base_path: ./tmp/rspec_parallel.xml
+            - test_name: rspec
+      - deploy-to-bitrise-io@2.7.7: { }
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+        stack: linux-docker-android-20.04
+
+  deploy-build-docker-img-used-for-cache:
+    before_run:
+      - _setup
+    steps:
+      - script@1.2.1:
+          title: create_docker_image_prod
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -ex
+                docker login -u "$DOCKER_LOGIN_USER" -p "$DOCKER_LOGIN_TOKEN"
+                docker buildx create --use --driver=docker-container
+                docker buildx build --push -t bitrisedev/webworker:latest \
+                  --build-arg BUNDLE_GEMS__CONTRIBSYS__COM=$SIDEKIQ_PRO_LICENCE_KEY \
+                  --cache-to type=registry,ref=bitrisedev/webworker:latest-cache,mode=max,compression=zstd \
+                  --cache-from type=registry,ref=bitrisedev/webworker:latest-cache .
+
+  deploy-run-security-scan:
+    steps:
+      - script@1.2.1:
+          title: Security scan
+          is_always_run: true
+          is_skippable: true
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                set -ex
+
+                # wait for 3 minutes (maximum time for preboot, sadly there seems to be no way to know when preboot has finished)
+                sleep $((3 * 60)) & # schedule a 3 minute wait
+                sleep_delay=$!
+                docker pull owasp/zap2docker-weekly # download the image
+                wait $sleep_delay # wait for the 3 minutes to pass
+
+                docker run -t owasp/zap2docker-weekly zap-baseline.py -t https://app.bitrise.io
+
+  build-and-push-dev-image:
+    before_run:
+      - _setup
+    steps:
+      - script:
+          title: Authenticate to GCP staging
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+                KEY_FILE_PATH=$(mktemp -d)/keyfile.json
+                echo "${GAR_SERVICE_ACCOUNT_STAGING_B64}" | base64 --decode > ${KEY_FILE_PATH}
+                gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
+                gcloud auth configure-docker ${GAR_HOST}
+      - script:
+          title: Build Docker Image
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+                docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+                docker buildx create --name multiarch --driver docker-container --use
+                docker buildx inspect --bootstrap
+                docker buildx build --platform linux/amd64,linux/arm64 --build-arg BUNDLE_GEMS__CONTRIBSYS__COM=$SIDEKIQ_PRO_LICENCE_KEY \
+                  -t ${GAR_HOST}/${GAR_PROJECT_STAGING}/${GAR_REPOSITORY}/${SERVICE_NAME}:${BITRISE_BUILD_NUMBER}-dev \
+                  -t ${GAR_HOST}/${GAR_PROJECT_STAGING}/${GAR_REPOSITORY}/${SERVICE_NAME}:latest-dev \
+                  -f deployments/local/Dockerfile --push .
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+        stack: linux-docker-android-20.04
+
+  build-and-push-review-app-image:
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_STAGING
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.dev
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_STAGING_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_STAGING_B64
+    before_run:
+      - _build_and_publish_image
+      - _upload_sourcemaps_to_datadog
+
+  build-and-publish-staging:
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_STAGING
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.dev
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_STAGING_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_STAGING_B64
+    after_run:
+      - _build_and_publish_image
+      - _upload_sourcemaps_to_datadog
+
+  build-and-upload-frontend-staging:
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_STAGING
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.dev
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_STAGING_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_STAGING_B64
+    after_run:
+      - _setup
+      - _create_frontend_env_file
+      - _build_and_deploy_frontend
+      - _upload_sourcemaps_to_datadog
+
+  build-and-upload-frontend-production:
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_PROD
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_PROD
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.io
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_PROD_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_PROD_B64
+    after_run:
+      - _setup
+      - _create_frontend_env_file
+      - _build_and_deploy_frontend
+      - _upload_sourcemaps_to_datadog
+
+  build-and-upload-backend-staging:
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_STAGING
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.dev
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_STAGING_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_STAGING_B64
+    after_run:
+      - _setup
+      - _create_frontend_env_file
+      - _build_and_push_docker_image_k8s
+
+  build-and-upload-backend-production:
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_PROD
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_PROD
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.io
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_PROD_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_PROD_B64
+    after_run:
+      - _setup
+      - _create_frontend_env_file
+      - _build_and_push_docker_image_k8s
+
+  deploy-staging-in-one-workflow:
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_STAGING
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_STAGING
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.dev
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_STAGING_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_STAGING_B64
+    after_run:
+      - _build_and_publish_image
+      - _deploy_gitops_staging
+      - _upload_sourcemaps_to_datadog
+
+  build-and-publish-production-k8s:
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_PROD
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_PROD
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.io
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_PROD_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_PROD_B64
+    before_run:
+      - _build_and_publish_image
+
+  deploy-canary:
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_PROD
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT_PROD
+      - FRONTEND_ASSET_BUCKET: web-cdn.bitrise.io
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_PROD_B64
+      - GCS_SERVICE_ACCOUNT_FRONTEND_B64: $GCS_SERVICE_ACCOUNT_FRONTEND_PROD_B64
+      - DOCKER_CACHE_FLAVOUR: canary
+    before_run:
+      - _build_and_publish_image
+      - _deploy_gitops_canary
+      - _upload_sourcemaps_to_datadog
+
+  eslint_test:
+    before_run:
+      - _setup
+      - _install_node
+    steps:
+      - script@1.2.1:
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails
+                set -e
+                # debug log
+                set -x
+
+                ls
+                git fetch --depth=1 origin master:master --no-tags
+                yarn && yarn run eslint $(git diff --name-only origin/master...HEAD | grep -E '\.(ts|tsx)$' | xargs)
+
+  frontend_test:
+    before_run:
+      - _setup
+      - _install_node
+    steps:
+      - script@1.2.1:
+          title: js-tests
+          inputs:
+            - content: |-
+                #!/usr/bin/env bash
+                # fail if any commands fails
+                set -ex
+                yarn && yarn test --ci
+      - deploy-to-bitrise-io@2.7.7: { }
+    meta:
+      bitrise.io:
+        machine_type_id: standard
+        stack: linux-docker-android-20.04
+
+  reset-staging:
+    before_run:
+      - _setup
+      - deploy-staging-in-one-workflow
+
+  code-ql-ruby:
+    envs:
+      - CODEQL_LANGUAGE: "ruby"
+    after_run:
+      - _code-ql
+
+  _code-ql:
+    envs:
+      - GITHUB_TOKEN: "$GITHUB_SECURITY_EVENT_WRITE"
+    before_run:
+      - _setup
+      - _install_node
+    steps:
+      - script:
+          title: install Code QL
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -x
+                i=1
+                while [ ! -x ./codeql/codeql ] && [ $i -le 20 ]
+                do
+                  i=$(( $i + 1 ))
+                  wget -nv --retry-connrefused --waitretry=1 --read-timeout=20 --timeout=15 -t 10 https://github.com/github/codeql-action/releases/latest/download/codeql-bundle-linux64.tar.gz
+                  tar -xvzf ./codeql-bundle-linux64.tar.gz
+                done
+                ./codeql/codeql resolve qlpacks
+                exit $?
+      - script:
+          title: create Code QL database
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                ./codeql/codeql database create "bitrise-website-$CODEQL_LANGUAGE" --language=$CODEQL_LANGUAGE
+      - script:
+          title: run Code QL analysis
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                ./codeql/codeql database analyze bitrise-website-$CODEQL_LANGUAGE \
+                   --format=sarif-latest \
+                   --output=./bitrise-website-$CODEQL_LANGUAGE.sarif \
+                   --threads=0 \
+
+      - script:
+          title: upload Code QL analysis results to github
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+                BITRISE_GIT_COMMIT=$(git rev-parse HEAD)
+                echo "$BITRISE_GIT_COMMIT"
+                test -n "$BITRISE_GIT_COMMIT"
+                if [ -n "$BITRISE_PULL_REQUEST" ]; then
+                  echo "pull request: $BITRISE_PULL_REQUEST"
+                  BITRISE_GIT_REF="refs/pull/$BITRISE_PULL_REQUEST/merge"
+                else
+                  BITRISE_GIT_REF="refs/heads/$BITRISE_GIT_BRANCH"
+                  echo "$BITRISE_GIT_REF"
+                  test -n "$BITRISE_GIT_REF"
+                fi
+                i=1
+                until [ $i -ge 5 ] || ./codeql/codeql github upload-results \
+                    --repository=bitrise-io/bitrise-website \
+                    --ref="$BITRISE_GIT_REF" \
+                    --commit="$BITRISE_GIT_COMMIT" \
+                    --sarif=./bitrise-website-$CODEQL_LANGUAGE.sarif
+                do
+                  sleep $i
+                  i=$(( $i + 1 ))
+                done
+
+  _push_to_gar:
+    envs:
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_B64
+      - GAR_PROJECT: $GAR_PROJECT
+      - GAR_REPOSITORY: $GAR_REPOSITORY
+      - SERVICE_NAME: $SERVICE_NAME
+    steps:
+      - script:
+          title: Authenticate to GCP staging
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+                KEY_FILE_PATH=$(mktemp -d)/keyfile.json
+                echo "${GAR_SERVICE_ACCOUNT_B64}" | base64 --decode > ${KEY_FILE_PATH}
+                gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
+                gcloud auth configure-docker ${GAR_HOST}
+      - script:
+          title: Tag and push Docker image to staging
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+                docker push --all-tags ${GAR_HOST}/${GAR_PROJECT}/${GAR_REPOSITORY}/${SERVICE_NAME}
+
+  _push_gar_staging:
+    envs:
+      - GAR_SERVICE_ACCOUNT_B64: $GAR_SERVICE_ACCOUNT_STAGING_B64
+      - GAR_PROJECT: $GAR_PROJECT_STAGING
+    after_run:
+      - _push_to_gar
+
+  _gitops_deploy:
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT
+      - DEPLOY_BRANCH: $DEPLOY_BRANCH
+      - TEMPLATES_FOLDER: $TEMPLATES_FOLDER
+      - SHOULD_CREATE_PULL_REQUEST: $SHOULD_CREATE_PULL_REQUEST
+      - GIT_AUTHOR_NAME: "website-CI"
+      - GIT_AUTHOR_EMAIL: "engineering@bitrise.io"
+      - GIT_COMMITTER_NAME: "website-CI"
+      - GIT_COMMITTER_EMAIL: "engineering@bitrise.io"
+    steps:
+      - script:
+          title: Prepare short commit hash
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+
+                if [ -z "${BITRISE_GIT_COMMIT-}" ]; then
+                  envman add --key BITRISE_GIT_COMMIT_SHORT --value "commit hash not found"
+                else
+                  envman add --key BITRISE_GIT_COMMIT_SHORT --value "${BITRISE_GIT_COMMIT:0:6}"
+                fi
+      - script:
+          title: Prepare release commit message
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+
+                if [ -z "${BITRISE_GIT_MESSAGE-}" ]; then
+                  envman add --key BITRISE_GIT_MESSAGE --value "Deploy ${SERVICE_NAME} ${BITRISE_BUILD_NUMBER} ${BITRISE_GIT_COMMIT_SHORT}"
+                else
+                  envman add --key BITRISE_GIT_MESSAGE --value "Deploy ${SERVICE_NAME} ${BITRISE_BUILD_NUMBER} ${BITRISE_GIT_COMMIT_SHORT} - ${BITRISE_GIT_MESSAGE}"
+                fi
+      - update-gitops-repository@1.1.9:
+          title: Update deployment configuration of bitrise website
+          inputs:
+            - templates_folder_path: $TEMPLATES_FOLDER
+            - deploy_repository_url: https://github.com/bitrise-io/web-monolith-deployments.git
+            - deploy_user: ${GITOPS_GITHUB_USERNAME}
+            - deploy_token: ${GITOPS_DEPLOY_TOKEN}
+            - deploy_branch: $DEPLOY_BRANCH
+            - deploy_path: web-monolith
+            - pull_request: $SHOULD_CREATE_PULL_REQUEST
+            - pull_request_title: "${SERVICE_NAME} - ${BITRISE_GIT_MESSAGE}"
+            - pull_request_body: "${BITRISE_BUILD_URL}"
+            - commit_message: "${BITRISE_GIT_MESSAGE}"
+            - values: |
+                repository: ${GAR_HOST}/${GAR_PROJECT}/${GAR_REPOSITORY}/${SERVICE_NAME}
+                tag: ${BITRISE_BUILD_NUMBER}
+
+  deploy-staging-via-gitops:
+    after_run:
+      - _setup
+      - _deploy_gitops_staging
+
+  deploy-production-via-gitops:
+    after_run:
+      - _setup
+      - _deploy_gitops_prod
+
+  _deploy_gitops_staging:
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_STAGING
+      - DEPLOY_BRANCH: staging
+      - TEMPLATES_FOLDER: deployments/helm
+      - SHOULD_CREATE_PULL_REQUEST: false
+    after_run:
+      - _gitops_deploy
+
+  _deploy_gitops_canary:
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_PROD
+      - DEPLOY_BRANCH: production
+      - TEMPLATES_FOLDER: deployments/helm-canary
+      - SHOULD_CREATE_PULL_REQUEST: false
+    after_run:
+      - _gitops_deploy
+
+  _deploy_gitops_prod:
+    envs:
+      - GAR_PROJECT: $GAR_PROJECT_PROD
+      - DEPLOY_BRANCH: production
+      - TEMPLATES_FOLDER: deployments/helm
+      - SHOULD_CREATE_PULL_REQUEST: false
+    after_run:
+      - _gitops_deploy
+
+  _create_frontend_env_file:
+    envs:
+      - FRONTEND_ENV_CONTENT: $FRONTEND_ENV_CONTENT
+    steps:
+      - generate-text-file@0.1.0:
+          title: Create env vars for frontend (secret file)
+          inputs:
+            - file_content: $FRONTEND_ENV_CONTENT
+            - file_name: .env.frontend
+
+  _build_and_push_docker_image_k8s:
+    steps:
+      - script:
+          title: Authenticate to GCP
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+                KEY_FILE_PATH=$(mktemp -d)/keyfile.json
+                echo "${GAR_SERVICE_ACCOUNT_B64}" | base64 --decode > ${KEY_FILE_PATH}
+                gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
+                gcloud auth configure-docker ${GAR_HOST}
+      - script:
+          title: Build and push container image
+          inputs:
+            - content: |
+                #!/bin/bash
+
+                scripts/docker/build_docker_3stage.sh
+      - script:
+          title: Extract asset files and upload to CDN
+          inputs:
+            - content: |
+                #!/bin/bash
+                export IMAGE_NAME="${GAR_HOST}/${GAR_PROJECT}/${GAR_REPOSITORY}/${SERVICE_NAME}:$BITRISE_BUILD_NUMBER"
+                docker create --name websitebuild-$BITRISE_BUILD_NUMBER $IMAGE_NAME
+                docker cp websitebuild-$BITRISE_BUILD_NUMBER:/home/ruby/app/public/version-$BITRISE_BUILD_NUMBER ./assets
+
+                KEY_FILE_PATH=$(mktemp -d)/keyfile.json
+                echo "${GCS_SERVICE_ACCOUNT_FRONTEND_B64}" | base64 --decode > ${KEY_FILE_PATH}
+                gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
+                gcloud storage cp -R assets/l gs://$FRONTEND_ASSET_BUCKET/version-$BITRISE_BUILD_NUMBER/l
+  _upload_sourcemaps_to_datadog:
+    steps:
+      - script:
+          title: Upload sourcemaps to datadog
+          is_skippable: true
+          inputs:
+            - content: |-
+                #!/bin/bash
+
+                echo 'Uploading sourcemap to DataDog...'
+                export DATADOG_API_KEY=$DATADOG_API_KEY_FOR_SOURCEMAPS
+                yarn datadog-ci sourcemaps upload public/packs/js --service=website --release-version="v$BITRISE_BUILD_NUMBER" --minified-path-prefix=https://$FRONTEND_ASSET_BUCKET/version-$BITRISE_BUILD_NUMBER/js --disable-git
+
+  _build_and_deploy_frontend:
+    before_run:
+      - _install_node
+      - _restore_node_modules
+    steps:
+      - script:
+          title: Build frontend
+          inputs:
+            - content: |-
+                #!/bin/bash
+                yarn install --frozen-lockfile
+                yarn webpack --mode production
+      - script:
+          title: Deploy frontend to CDN
+          inputs:
+            - content: |-
+                #!/bin/bash
+                set -euxo pipefail
+                KEY_FILE_PATH=$(mktemp -d)/keyfile.json
+                echo "${GCS_SERVICE_ACCOUNT_FRONTEND_B64}" | base64 --decode > ${KEY_FILE_PATH}
+                gcloud auth activate-service-account --key-file=${KEY_FILE_PATH}
+
+                pushd public/packs
+                  for f in *; do
+                    gcloud storage cp -R $f gs://$FRONTEND_ASSET_BUCKET/version-$BITRISE_BUILD_NUMBER/$f
+                  done
+                popd
+                rm $KEY_FILE_PATH
+
+  _build_and_publish_image:
+    after_run:
+      - _setup
+      - _create_frontend_env_file
+      - _build_and_deploy_frontend
+      - _build_and_push_docker_image_k8s
+
+  merge_to_canary:
+    steps:
+      - git-clone@8.2.1:
+          title: Git clone
+          inputs:
+            - clone_depth: -1
+      - script@1.2.1:
+          title: Update the canary branch
+          run_if: '{{getenv "CANARY_BRANCH" | ne ""}}'
+          is_skippable: true
+          inputs:
+            - content: |
+                #!/bin/bash
+                set -ex
+
+                git checkout master
+                git pull --no-tags
+                git checkout "$CANARY_BRANCH"
+                git pull --no-tags
+                git merge master
+                git push
+
+  start-security-scan-standalone-build:
+    steps:
+      - build-router-start@0.14.6:
+          inputs:
+            - workflows: deploy-run-security-scan
+            - access_token: $PAT_FOR_BUILD_TRIGGER
+
+  alert-deploy-failed:
+    steps:
+      - slack@4.1.0:
+          inputs:
+            - channel: '#website-status'
+            - text: Monolith deployment failed
+            - webhook_url: $SLACK_WEBHOOK_URL_FOR_WEBSITE_STATUS
