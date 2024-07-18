@@ -1,5 +1,4 @@
----
-format_version: '13'
+format_version: "13"
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
 workflows:
@@ -13,10 +12,11 @@ meta:
   bitrise.io:
     stack: linux-docker-android-20.04
     machine_type_id: standard
-app:
-  envs: []
 trigger_map:
-- push_branch: main
+- pull_request_source_branch: '*'
+  type: pull_request
   workflow: primary
-- pull_request_source_branch: "*"
+- push_branch: main
+  enabled: false
+  type: push
   workflow: primary
