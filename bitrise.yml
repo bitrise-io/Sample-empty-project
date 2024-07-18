@@ -12,7 +12,4 @@ meta:
   bitrise.io:
     stack: linux-docker-android-20.04
     machine_type_id: standard
-trigger_map:
-- pull_request_source_branch: '*'
-  type: pull_request
-  workflow: primary
+trigger_map: []
