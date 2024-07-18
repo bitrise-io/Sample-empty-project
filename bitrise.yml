@@ -41,7 +41,7 @@ app:
 meta:
   bitrise.io:
     machine_type_id: standard
-    stack: linux-docker-android-22.04
+    stack: linux-docker-android-20.04
 
 trigger_map:
   - push_branch: master
@@ -312,7 +312,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: standard
-        stack: linux-docker-android-22.04
+        stack: linux-docker-android-20.04
 
   ci-be-lint:
     before_run:
@@ -392,7 +392,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: standard
-        stack: linux-docker-android-22.04
+        stack: linux-docker-android-20.04
 
   ci-frontend-page:
     before_run:
@@ -425,7 +425,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: standard
-        stack: linux-docker-android-22.04
+        stack: linux-docker-android-20.04
 
   ci-rspec-apps:
     before_run:
@@ -450,7 +450,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: standard
-        stack: linux-docker-android-22.04
+        stack: linux-docker-android-20.04
 
   ci-rspec:
     before_run:
@@ -485,7 +485,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: standard
-        stack: linux-docker-android-22.04
+        stack: linux-docker-android-20.04
 
   deploy-build-docker-img-used-for-cache:
     before_run:
@@ -553,7 +553,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: standard
-        stack: linux-docker-android-22.04
+        stack: linux-docker-android-20.04
 
   build-and-push-review-app-image:
     envs:
@@ -715,7 +715,7 @@ workflows:
     meta:
       bitrise.io:
         machine_type_id: standard
-        stack: linux-docker-android-22.04
+        stack: linux-docker-android-20.04
 
   reset-staging:
     before_run:
