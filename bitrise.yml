@@ -15,8 +15,4 @@ meta:
 trigger_map:
 - pull_request_source_branch: '*'
   type: pull_request
-  workflow: primary
-- push_branch: main
-  enabled: false
-  type: push
-  workflow: primary
+  workflow
