@@ -41,8 +41,6 @@ app:
 meta:
   bitrise.io:
     machine_type_id: standard
-    stack: linux-docker-android-20.04
-
 trigger_map:
   - push_branch: master
     pipeline: deploy-pipeline
