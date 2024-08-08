@@ -116,6 +116,3 @@ workflows:
             }
             npm run build-storybook || fail_unless_alpha
             node ./.storybook/deploy-storybook.js || fail_unless_alpha
-meta:
-  bitrise.io:
-    machine_type_id: standard
