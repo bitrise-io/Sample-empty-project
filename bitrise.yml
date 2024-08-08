@@ -37,10 +37,6 @@ app:
     - GAR_HOST: us-central1-docker.pkg.dev
     - GAR_REPOSITORY: web-monolith
     - DOCKER_CACHE_FLAVOUR: master
-
-meta:
-  bitrise.io:
-    machine_type_id: standard
 trigger_map:
   - push_branch: master
     pipeline: deploy-pipeline
