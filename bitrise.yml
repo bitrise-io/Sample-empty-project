@@ -1,118 +1,24 @@
 ---
-format_version: '8'
+format_version: '13'
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
-app:
-  envs:
-  - opts:
-      is_expand: false
-    STORYBOOK_GCP_DEPLOY_BUCKET: bitrise-storybook-dev
-  - opts:
-      is_expand: false
-    GIT_AUTHOR_NAME: Bitkit Tooling Bot
-  - opts:
-      is_expand: false
-    GIT_AUTHOR_EMAIL: tooling.bot@bitrise.io
-  - opts:
-      is_expand: false
-    GIT_COMMITTER_NAME: Bitkit Tooling Bot
-  - opts:
-      is_expand: false
-    GIT_COMMITTER_EMAIL: tooling.bot@bitrise.io
-trigger_map:
-- push_branch: master
-  workflow: Master
-- push_branch: alpha*
-  workflow: AlphaBranch
-- pull_request_source_branch: "*"
-  workflow: Primary
-  pull_request_target_branch: master
 workflows:
-  AlphaBranch:
-    before_run:
-    - Primary
+  primary:
     steps:
-    - script:
-        title: Prepublish script
-        inputs:
-        - content: |
-            #!/bin/bash
-            npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
-            git checkout $BITRISE_GIT_BRANCH
-    - npm:
-        title: Publish from alpha branch to NPM
-        inputs:
-        - command: run release-alpha
-  Master:
-    before_run:
-    - Primary
-    steps:
-    - script:
-        title: Prepublish script
-        inputs:
-        - content: |
-            #!/bin/bash
-            npm config set //registry.npmjs.org/:_authToken ${NPM_TOKEN}
-            git checkout $BITRISE_GIT_BRANCH
-    - npm:
-        title: Publish to NPM
-        inputs:
-        - command: run release
-  Primary:
-    steps:
-    - activate-ssh-key:
+    - activate-ssh-key@4:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
-    - git-clone: {}
-    - script:
-        inputs:
-        - content: |
-            #!/bin/bash
-            mkdir -p /nodejs/{nb,install,nb-cache}
-            REQUESTED_NODE_VERSION=$(awk '{ if ($1 == "nodejs" ) print $2 }' .tool-versions)
-            envman add --key REQUESTED_NODE_VERSION --value $REQUESTED_NODE_VERSION
-    - restore-cache:
-        inputs:
-        - key: nodejs-cache-{{ getenv "REQUESTED_NODE_VERSION" }}
-        - paths: "/nodejs/nb-cache"
-    - script:
-        title: Install Node JS
-        inputs:
-        - content: |
-            #!/bin/bash
-            git clone https://github.com/nodenv/node-build /tmp/node-build
-            PREFIX=/nodejs/nb /tmp/node-build/install.sh
-            NODE_BUILD_CACHE_PATH=/nodejs/nb-cache /nodejs/nb/bin/node-build $REQUESTED_NODE_VERSION /nodejs/install
-            export PATH=/nodejs/install/bin:$PATH
-            envman add --key PATH --value $PATH
-    - save-cache:
-        inputs:
-        - key: nodejs-cache-{{ getenv "REQUESTED_NODE_VERSION" }}
-        - paths: "/nodejs/nb-cache"
-    - npm:
-        title: Install dependencies
-        inputs:
-        - command: ci
-    - npm:
-        title: Run Linting
-        inputs:
-        - command: run lint
-    - npm:
-        title: Run typechecking
-        inputs:
-        - command: run typecheck
-    - npm:
-        title: Run Tests
-        inputs:
-        - command: test
-    - script:
-        title: Build and deploy Storybook
-        inputs:
-        - content: |
-            #!/bin/bash
-            fail_unless_alpha() {
-              if [ "$BITRISE_TRIGGERED_WORKFLOW_ID" != "AlphaBranch" ]; then
-                exit 1
-              fi
-            }
-            npm run build-storybook || fail_unless_alpha
-            node ./.storybook/deploy-storybook.js || fail_unless_alpha
+    - git-clone@8: {}
+    - deploy-to-bitrise-io@2: {}
+    meta:
+      bitrise.io:
+        stack: osx-xcode-25.2.x-edge
+        machine_type_id: g2-m1.8core
+meta:
+  bitrise.io:
+    stack: linux-docker-android-20.04
+    machine_type_id: standard
+trigger_map:
+- push_branch: main
+  workflow: primary
+- pull_request_source_branch: "*"
+  workflow: primary
