@@ -9,14 +9,12 @@ workflows:
         run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
     - git-clone@8: {}
     - deploy-to-bitrise-io@2: {}
-    meta:
-      bitrise.io:
-        stack: osx-xcode-25.2.x-edge
-        machine_type_id: g2-m1.8core
 meta:
   bitrise.io:
     stack: linux-docker-android-20.04
     machine_type_id: standard
+app:
+  envs: []
 trigger_map:
 - push_branch: main
   workflow: primary
