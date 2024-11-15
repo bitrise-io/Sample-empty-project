@@ -14,7 +14,6 @@ meta:
     stack: linux-docker-android-22.04
     machine_type_id: standard
 trigger_map:
-- workflow: primary
-  push_branch: main
+- push_branch: main
 - workflow: primary
   pull_request_source_branch: "*"
