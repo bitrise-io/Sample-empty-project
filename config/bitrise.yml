@@ -18,8 +18,3 @@ workflows:
 meta:
   bitrise.io:
     machine_type_id: standard
-trigger_map:
-- workflow: primary
-  push_branch: main
-- workflow: primary
-  pull_request_source_branch: "*"
