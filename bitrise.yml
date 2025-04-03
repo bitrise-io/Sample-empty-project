@@ -1,19 +1,39 @@
 ---
-format_version: "13"
+format_version: '13'
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
 project_type: other
 workflows:
   primary:
     steps:
-    - activate-ssh-key@4:
-        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - bundle::Step_bundle: {}
     - git-clone@8: {}
-    - deploy-to-bitrise-io@2: {}
+    - bundle::Step_bundle: {}
+    - git-clone@8: {}
+    triggers:
+      push:
+      - branch: main
+      pull_request:
+      - source_branch: "*"
+    before_run:
+    - sdvdsasd
+  sdvdsasd: {}
 meta:
   bitrise.io:
-    machine_type_id: standard
-trigger_map:
-- workflow: primary
-  push_branch: main
-- workflow: primary
-  pull_request_source_branch: "*"
+    stack: osx-xcode-16.0.x
+    machine_type_id: g2.mac.medium
+app:
+  envs:
+  - foo: 1
+    opts:
+      is_expand: false
+pipelines:
+  dsfzxc:
+    workflows:
+      primary: {}
+      sdvdsasd:
+        depends_on:
+        - primary
+step_bundles:
+  Step_bundle:
+    steps:
+    - deploy-to-bitrise-io@2: {}
