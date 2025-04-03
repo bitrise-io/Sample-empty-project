@@ -19,7 +19,7 @@ workflows:
   sdvdsasd: {}
 meta:
   bitrise.io:
-    stack: linux-ubuntu-22.04
+    stack: osx-xcode-15
     machine_type_id: g2.mac.medium
 app:
   envs:
