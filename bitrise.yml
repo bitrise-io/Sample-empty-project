@@ -1,7 +1,6 @@
----
-format_version: '13'
+format_version: "13"
 default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
-project_type: ios
+project_type: other
 workflows:
   primary:
     steps:
@@ -13,14 +12,16 @@ workflows:
       push:
       - branch: main
       pull_request:
-      - source_branch: "*"
+      - source_branch: '*'
     before_run:
     - sdvdsasd
+    meta:
+      bitrise.io:
+        stack: linux-docker-android-22.04
   sdvdsasd: {}
 meta:
   bitrise.io:
-    stack: osx-xcode-11.0.x
-    machine_type_id: g2.mac.medium
+    stack: osx-xcode-16.0.x
 app:
   envs:
   - foo: 1
