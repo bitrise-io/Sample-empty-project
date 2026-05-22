@@ -33,7 +33,7 @@ workflows:
     - Primary
     steps:
     - script:
-        title: Prepublish script
+        title: Prepublish scriptwaqds
         inputs:
         - content: |
             #!/bin/bash
