@@ -20,7 +20,8 @@ meta:
     machine_type_id: standard
 pipelines:
   test:
-    workflows: {}
+    workflows:
+      sdzxc: {}
 include:
 - path: newl.yml
 - path: newl2.yml
