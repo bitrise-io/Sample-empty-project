@@ -1,0 +1,5 @@
+# newl2.yml
+
+pipelines:
+  sda:
+    workflows: {}
