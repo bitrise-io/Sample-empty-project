@@ -3,3 +3,5 @@
 pipelines:
   sda:
     workflows: {}
+include:
+- path: new3.yml
