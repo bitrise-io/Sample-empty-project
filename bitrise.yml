@@ -18,10 +18,3 @@ meta:
   bitrise.io:
     stack: linux-docker-android-22.04
     machine_type_id: standard
-pipelines:
-  test:
-    workflows:
-      sdzxc: {}
-include:
-- path: newl.yml
-- path: newl2.yml
