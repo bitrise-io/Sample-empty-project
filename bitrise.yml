@@ -21,3 +21,6 @@ meta:
 include:
 - path: new.yml
 - path: new2.yml
+- path: new3.yml
+- path: new4.yml
+- path: new5.yml
