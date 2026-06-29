@@ -20,3 +20,4 @@ meta:
     machine_type_id: standard
 include:
 - path: new.yml
+- path: new2.yml
