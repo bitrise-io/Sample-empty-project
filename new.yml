@@ -4,3 +4,7 @@ pipelines:
   sdxzdsads:
     workflows:
       "125": {}
+workflows:
+  "125":
+    steps:
+    - github-status@3: {}
