@@ -1,3 +1,6 @@
-# new.yml
+# new3.yml
 
-null
+workflows:
+  "3":
+    steps:
+    - github-status@3: {}
