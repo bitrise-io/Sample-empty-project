@@ -4,3 +4,5 @@ workflows:
   "2":
     steps:
     - github-status@3: {}
+  "WF-2":
+    summary: hello WF
